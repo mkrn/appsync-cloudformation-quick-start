@@ -44,8 +44,6 @@ aws cognito-idp admin-set-user-settings   \
 
 - CI Pipeline (CodePipeline)
 - Build Service (CodeBuild)
-- RDS Postgres Database Instance
-- Security Group opening port 5432 for outside access
 - User Pool (Cognito)
 - Identity Pool
 - User Pool client
@@ -56,7 +54,6 @@ Once bootstrap stack it checks out the project code from repository, builds and 
 
 - AppSync API project
 - AppSync Schema
-- Lambda
 - AppSync DataSource
 - AppSync Resolvers
 
