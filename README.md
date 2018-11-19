@@ -1,13 +1,14 @@
 # AWS AppSync CloudFormation Quick Start Template
 
 ### Bootstrap
-1) Launching bootstrap.yaml CloudFormation template on your account:
+1) Launch bootstrap.yaml CloudFormation template on your account:
 
 - Review and adjust bootstrap.yaml if necessary
+- Create personal access token on https://github.com/settings/tokens 
 - Replace [PROJECT_NAME] with lowercase project name
-- Fill in [GITHUB_USERNAME] [GITHUB_REPOSITORY_NAME] [GITUB_TOKEN]
+- Fill in [GITHUB_USERNAME] [GITHUB_REPOSITORY_NAME] [GITHUB_TOKEN]
 - Run
-- Check Cloudformation to make sure it launched properly
+- Check CloudFormation to make sure it launched properly. CodePipeline will be created and run build and deploy iac.yaml template.
 
 ```
 aws cloudformation deploy \
@@ -19,23 +20,23 @@ aws cloudformation deploy \
   GithubOwner=[GITHUB_USERNAME]\
   GithubRepo=[GITHUB_REPOSITORY_NAME]\
   GithubBranch=master\
-  GitHubToken=[GITUB_TOKEN]
+  GitHubToken=[GITHUB_TOKEN]
 ```
 
-2) Creating your first user in Cognito user pool
+2) Review 
+
+### Creating your first user in Cognito user pool
 
 ```
 aws cognito-idp sign-up   \
-  --profile test  \
-  --region us-west-2 \
-  --client-id 6vk51is4s290c86lrsvvs43spc \
-  --username 18294541696 \
-  --password testTest12#$ \
-  --user-attributes Name=email,Value=ffab00@gmail.com Name=phone_number,Value=+18294541696 &&
+  --region [REGION] \
+  --client-id [COGNITO_CLIENT_ID] \
+  --username 18... \
+  --password somePassword12$$ \
+  --user-attributes Name=email,Value=email@gmail.com Name=phone_number,Value=+18..... &&
 aws cognito-idp admin-set-user-settings   \
-  --profile test  \
-  --region us-west-2 \
-  --user-pool-id us-west-2_XjenccFei \
+  --region [REGION] \
+  --user-pool-id [USER_POOL_ID] \
   --username 18294541696 \
   --mfa-options DeliveryMedium=SMS,AttributeName=phone_number
 ```
