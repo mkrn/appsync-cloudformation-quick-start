@@ -60,16 +60,11 @@ Once bootstrap stack it checks out the project code from repository, builds and 
 
 ## TODO
 
-- [x] Add RDS option to bootstrap
-- [x] Add Cognito Userpool to bootstrap
-- [ ] Tests for Lambda
+- [ ] Tests for Lambdas
 - [ ] eslint for Lambda
 - [ ] pre-commit checks
-- [ ] Version with knex
-- [ ] Add VPC to bootstrap, connect RDS & Lambda into it
-- [ ] Yeoman create new resolver (in iac, lambda js file)
-- [ ] Test data-loader in loader.js
 - [ ] GraphQL Voyager
+- [ ] Separate GraphQL to a sub-stack so that multiple APIs could be created (one with Cognito auth, other with api key auth)
 
 ## License
 
