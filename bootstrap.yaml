@@ -24,7 +24,7 @@ Resources:
     Type: "AWS::S3::Bucket"
     Properties:
       AccessControl: "BucketOwnerFullControl"
-      BucketName: !Sub "cf-${AWS::AccountId}"
+      BucketName: !Sub "cf-${Prefix}-${AWS::AccountId}"
 
 
   ServiceRole:
@@ -70,8 +70,10 @@ Resources:
         Image: aws/codebuild/nodejs:7.0.0
         Type: LINUX_CONTAINER
         EnvironmentVariables:
+          - Name: PREFIX
+            Value: !Ref Prefix
           - Name: BUCKET
-            Value: !Sub "cf-${AWS::AccountId}"
+            Value: !Sub "cf-${Prefix}-${AWS::AccountId}"
           - Name: REGION
             Value: !Ref AWS::Region
           - Name: ACCOUNT_ID
@@ -91,7 +93,7 @@ Resources:
       Name: !Sub "${Prefix}IAC_Pipeline"
       ArtifactStore:
         Type: S3
-        Location: !Sub "cf-${AWS::AccountId}"
+        Location: !Sub "cf-${Prefix}-${AWS::AccountId}"
       RoleArn: !GetAtt ServiceRole.Arn
       Stages:
 
