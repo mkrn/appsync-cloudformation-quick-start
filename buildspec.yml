@@ -1,0 +1,20 @@
+version: 0.1
+phases:
+  install:
+    commands:
+      - aws --version
+      - pip install --upgrade awscli
+      - pip install --upgrade aws-sam-cli
+      - aws --version
+      - sam --version
+      - curl -v https://registry.npmjs.org
+  build:
+    commands:
+      # npm install lambda functions
+      - npm config set strict-ssl false
+      # - cd lambda/email-invoice && npm install --production
+      # - cd database-migrations && npm install && npm run up
+      - sam package --template-file iac.yaml --output-template-file iac.yaml --s3-bucket cf-$(aws sts get-caller-identity --output text --query Account)
+artifacts:
+  files:
+    - iac.yaml

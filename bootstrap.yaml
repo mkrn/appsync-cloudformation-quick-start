@@ -1,0 +1,156 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  Prefix:
+    Type: String
+    Description: Prefix for names
+
+  GithubOwner:
+    Type: String
+    Description: Github Owner
+  GithubRepo:
+    Type: String
+    Description: Github Repo
+  GithubBranch:
+    Type: String
+    Description: Github Branch
+  GitHubToken:
+    Type: String
+    Description: Github Token
+
+
+Resources:
+  Bucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      AccessControl: "BucketOwnerFullControl"
+      BucketName: !Sub "cf-${AWS::AccountId}"
+
+
+  ServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Prefix}CFServiceRole"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+                - codepipeline.amazonaws.com
+                - cloudformation.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+      Policies:
+        - PolicyName: DenyDeleteSensitiveStuff
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Action:
+                  - cognito-idp:DeleteUserPool
+                Effect: Deny
+                Resource: "*"
+
+  CodeBuild:
+    Type: AWS::CodeBuild::Project
+    DependsOn:
+      - Bucket
+    Properties:
+      Name: !Sub "${Prefix}IACbuild"
+      Artifacts:
+          Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_LARGE
+        Image: aws/codebuild/nodejs:7.0.0
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: BUCKET
+            Value: !Sub "cf-${AWS::AccountId}"
+          - Name: REGION
+            Value: !Ref AWS::Region
+          - Name: ACCOUNT_ID
+            Value: !Ref AWS::AccountId
+      ServiceRole: !Ref ServiceRole
+      Source:
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 20
+
+  ### Builds CI/CD pipeline Stages and Actions
+  Pipeline:
+    DependsOn:
+      - Bucket
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      # RestartExecutionOnUpdate: true
+      Name: !Sub "${Prefix}IAC_Pipeline"
+      ArtifactStore:
+        Type: S3
+        Location: !Sub "cf-${AWS::AccountId}"
+      RoleArn: !GetAtt ServiceRole.Arn
+      Stages:
+
+      ### Defines Source repository via params
+      - Name: Checkout
+        Actions:
+        - InputArtifacts: []
+          Name: Source
+          ActionTypeId:
+            Category: Source
+            Owner: ThirdParty
+            Version: '1'
+            Provider: GitHub
+          OutputArtifacts:
+          - Name: MyApp
+          Configuration:
+            Owner: !Ref GithubOwner
+            Repo: !Ref GithubRepo
+            Branch: !Ref GithubBranch
+            OAuthToken: !Ref GitHubToken
+          RunOrder: 1
+
+      # Builds code using CodeBuild defined here and buildspec.yaml
+      - Name: Build
+        Actions:
+        - InputArtifacts:
+          - Name: MyApp
+          Name: CodeBuild
+          ActionTypeId:
+            Category: Build
+            Owner: AWS
+            Version: '1'
+            Provider: CodeBuild
+          OutputArtifacts:
+          - Name: MyAppBuild
+          Configuration:
+            ProjectName: !Sub "${Prefix}IACbuild"
+          RunOrder: 1
+
+      - Name: Deploy
+        Actions:
+        - InputArtifacts:
+          - Name: MyAppBuild
+          Name: iacDeployCloudFormation
+          ActionTypeId:
+            Category: Deploy
+            Owner: AWS
+            Version: '1'
+            Provider: CloudFormation
+          OutputArtifacts:
+          - Name: iacDeployed
+          Configuration:
+            StackName: !Sub "${Prefix}AppSync"
+            ActionMode: CREATE_UPDATE
+            Capabilities: CAPABILITY_NAMED_IAM
+            RoleArn: !GetAtt ServiceRole.Arn
+            TemplatePath: MyAppBuild::iac.yaml
+            ParameterOverrides: !Sub |
+              {
+                "Prefix": "${Prefix}"
+              }
+          RunOrder: 1

@@ -1,0 +1,112 @@
+enum InvoiceStatus {
+  draft
+  sent
+  paid
+}
+
+enum LineItemPer {
+  item
+  day
+  hour
+  minute
+  night
+  page
+  time
+  ticket
+}
+
+type Invoice {
+  merchant_id: String!
+  order_id: String!
+  title: String
+  description: String
+  amount_shipping: Float
+  tax_rate_percent: Float
+  currency: String
+  customer_name: String
+  customer_email: String
+  customer_message: String
+  status: InvoiceStatus
+  datetime_created: String
+  datetime_viewed: String
+  datetime_modified: String
+  datetime_sent: String
+  datetime_expiry: String
+  datetime_paid: String
+  created_by: String
+  line_items: [LineItem]
+  amount: Float
+  deleted: Boolean
+}
+
+type LineItem {
+  name: String
+  price: Float
+  per: LineItemPer
+  quantity: Float
+}
+
+input LineItemInput {
+  name: String
+  price: Float
+  per: LineItemPer
+  quantity: Float
+}
+
+input InvoiceDetailsInput {
+  title: String
+  description: String
+  amount_shipping: Float
+  tax_rate_percent: Float
+  currency: String
+  customer_name: String
+  customer_email: String
+  customer_message: String
+  datetime_expiry: String
+  line_items: [LineItemInput]
+}
+
+
+type Mutation {
+  createInvoice(
+    order_id: String!,
+    merchant_id: String!,
+    details: InvoiceDetailsInput!
+  ): Invoice
+
+  updateInvoice(
+    order_id: String!,
+    merchant_id: String!,
+    details: InvoiceDetailsInput!
+  ): Invoice
+
+  sendInvoice(
+    order_id: String!,
+    merchant_id: String!
+  ): Invoice
+
+  deleteInvoice(
+    order_id: String!,
+    merchant_id: String!
+  ): Invoice
+}
+
+type Query {
+  myInvoices: [Invoice]
+  # @aws_auth(cognito_groups: ["Merchant", "Employee"])
+}
+
+type Subscription {
+  invoiceCreated: Invoice
+  @aws_subscribe(mutations: ["createInvoice"])
+  invoiceUpdated: Invoice
+  @aws_subscribe(mutations: ["updateInvoice"])
+  invoiceRemoved: Invoice
+  @aws_subscribe(mutations: ["deleteInvoice"])
+}
+
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}

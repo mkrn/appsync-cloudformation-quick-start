@@ -1,0 +1,483 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  Prefix:
+    Type: String
+    Description: Prefix for names
+
+Resources:
+  # User Pool, Cognito
+
+  SNSRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "cognito-idp.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        - PolicyName: "CognitoSNSPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "sns:Publish"
+                Resource: "*"
+
+  UserPool:
+    Type: "AWS::Cognito::UserPool"
+    Properties:
+      UserPoolName: !Sub "${Prefix}_UserPool"
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+        UnusedAccountValidityDays: 90
+      AutoVerifiedAttributes:
+        - email
+        - phone_number
+      UsernameAttributes:
+        - email
+      MfaConfiguration: "OPTIONAL"
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+      # Here's how to add custom attributes:
+      # Schema:
+      #   - AttributeDataType: String
+      #     Mutable: True
+      #     Name: merchant_id
+      SmsAuthenticationMessage: Your authentication code is {####}.
+      SmsConfiguration:
+        ExternalId: !Sub "${Prefix}-external"
+        SnsCallerArn: !GetAtt SNSRole.Arn
+      # Here's how to add hooks:
+      # LambdaConfig:
+        # CreateAuthChallenge: String
+        # CustomMessage: String
+        # DefineAuthChallenge: String
+        # PostAuthentication: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:lambda-echo"
+        # PostConfirmation: String
+        # PreAuthentication: String
+        # PreSignUp: String
+        # VerifyAuthChallengeResponse: String
+      # SmsVerificationMessage: String
+
+  UserPoolsClient:
+    Type: "AWS::Cognito::UserPoolClient"
+    Properties:
+      ClientName: default
+      UserPoolId: !Ref UserPool
+      ExplicitAuthFlows:
+        - ADMIN_NO_SRP_AUTH
+      GenerateSecret: false
+      # Here's how to allow modification of custom attributes:
+      # ReadAttributes:
+      #   - "custom:merchant_id"
+
+
+  CognitoAnalyticsAndSyncPolicy:
+    Type: "AWS::IAM::ManagedPolicy"
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Action:
+              - "mobileanalytics:PutEvents"
+              - "cognito-sync:*"
+              - "cognito-identity:*"
+            Resource: "*"
+
+
+  IdentityPool:
+    Type: "AWS::Cognito::IdentityPool"
+    Properties:
+      IdentityPoolName: !Sub "${Prefix}_MainIdentityPool"
+      AllowUnauthenticatedIdentities: true
+      DeveloperProviderName: login.me.auth
+      CognitoIdentityProviders:
+        - ClientId: !Ref UserPoolsClient
+          ProviderName: !Sub cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
+
+  UnauthenticatedRole:
+    Type: AWS::IAM::Role
+    DependsOn: IdentityPool
+    Properties:
+      RoleName: !Sub "${Prefix}_IdentityPool_Unauthenticated_Role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+          -
+            Effect: Allow
+            Principal:
+              Federated:
+                - cognito-identity.amazonaws.com
+            Condition:
+              StringEquals:
+                cognito-identity.amazonaws.com:aud: !Ref IdentityPool
+              ForAnyValue:StringLike:
+                cognito-identity.amazonaws.com:amr: "unauthenticated"
+            Action:
+              - "sts:AssumeRoleWithWebIdentity"
+      Path: "/"
+      ManagedPolicyArns:
+        - !Ref CognitoAnalyticsAndSyncPolicy
+
+  AuthenticatedRole:
+    Type: AWS::IAM::Role
+    DependsOn: IdentityPool
+    Properties:
+      RoleName: !Sub "${Prefix}_IdentityPool_Authenticated_Role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+          -
+            Effect: Allow
+            Principal:
+              Federated:
+                - cognito-identity.amazonaws.com
+            Condition:
+              StringEquals:
+                cognito-identity.amazonaws.com:aud: !Ref IdentityPool
+              ForAnyValue:StringLike:
+                cognito-identity.amazonaws.com:amr: "authenticated"
+            Action:
+              - "sts:AssumeRoleWithWebIdentity"
+      Path: "/"
+      ManagedPolicyArns:
+        - !Ref CognitoAnalyticsAndSyncPolicy
+
+  IdentityPoolRoleMappings:
+    Type: "AWS::Cognito::IdentityPoolRoleAttachment"
+    Properties:
+      IdentityPoolId: !Ref IdentityPool
+      Roles:
+        authenticated: !GetAtt AuthenticatedRole.Arn
+        unauthenticated: !GetAtt UnauthenticatedRole.Arn
+
+  AdminUserGroup:
+    Type: "AWS::Cognito::UserPoolGroup"
+    Properties:
+      GroupName: Admin
+      Precedence: 0
+      UserPoolId: !Ref UserPool
+
+  # Here's how you create more user groups:
+  # MerchantUserGroup:
+  #   Type: "AWS::Cognito::UserPoolGroup"
+  #   Properties:
+  #     GroupName: Merchant
+  #     Precedence: 1
+  #     UserPoolId: !Ref UserPool
+
+  AppSyncServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - appsync.amazonaws.com
+          Action:
+          - sts:AssumeRole
+
+  AppSyncLambdaInvokePolicy:
+     Type: AWS::IAM::Policy
+     Properties:
+       PolicyName: !Sub "${Prefix}AppSyncLambdaInvokePolicy"
+       PolicyDocument:
+         Version: '2012-10-17'
+         Statement:
+         - Effect: Allow
+           Action:
+           - lambda:*
+           Resource: "*"
+       Roles:
+       - !Ref AppSyncServiceRole
+
+  DynamoDBRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${Prefix}-appsync-dynamodb-role
+      ManagedPolicyArns:
+        - Ref: AppSyncDynamoDBPolicy
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - sts:AssumeRole
+            Principal:
+              Service:
+                - appsync.amazonaws.com
+    DependsOn:
+      - AppSyncDynamoDBPolicy
+
+  AppSyncDynamoDBPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Managed policy to allow AWS AppSync to access the tables created by this template.
+      Path: /appsync/
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:DeleteItem
+              - dynamodb:UpdateItem
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:BatchGetItem
+              - dynamodb:BatchWriteItem
+            Resource: "*"
+
+
+  # Create AppSync GraphQL API
+  GraphQLApi:
+    Type: "AWS::AppSync::GraphQLApi"
+    Properties:
+      Name: !Sub "${Prefix}API"
+      UserPoolConfig:
+        UserPoolId: !Ref UserPool
+        AwsRegion: !Ref AWS::Region
+        DefaultAction: ALLOW
+      AuthenticationType: "AMAZON_COGNITO_USER_POOLS"
+
+  # Here's how to create APIKey for different authentication mode
+  # ApiKey:
+  #   Type: AWS::AppSync::ApiKey
+  #   Properties:
+  #     ApiId: !Ref GraphQLApi
+  #     Description: Lambda Key
+  #     Expires: 365
+
+  # Schema will get included with SAM PACKAGE command:
+  Schema:
+    Type: "AWS::AppSync::GraphQLSchema"
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DefinitionS3Location: ./schema.graphql
+
+
+  # Common role for lambda resolvers, please customize!
+  LambdaCommonRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: lambda-invoice-page-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        # default
+        -
+          PolicyName: Logs
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: "arn:aws:logs:*:*:*"
+        -
+          PolicyName: Dynamo
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - "dynamodb:Scan"
+                  - "dynamodb:PutItem"
+                  - "dynamodb:GetItem"
+                  - "dynamodb:DeleteItem"
+                  - "dynamodb:Query"
+                  - "dynamodb:UpdateItem"
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*"
+        -
+          PolicyName: Cognito
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - "mobileanalytics:PutEvents"
+                  - "cognito-sync:*"
+                  - "cognito-idp:DescribeUserPool"
+                  - "cognito-idp:AdminCreateUser"
+                  - "cognito-idp:AdminAddUserToGroup"
+                  - "cognito-idp:AdminEnableUser"
+                  - "cognito-idp:AdminUpdateUserAttributes"
+                Resource: "*"
+        -
+          PolicyName: Email
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - "ses:SendEmail"
+                Resource: "*"
+
+
+  # Here's how you create a DynamoDB table with composite id:
+  # DynamoDBInvoicesTable:
+  #   Type: "AWS::DynamoDB::Table"
+  #   Description: "Data store for AWS AppSync Invoice Type"
+  #   Properties:
+  #     TableName: !Sub ${Prefix}-invoice-table
+  #     AttributeDefinitions:
+  #       - AttributeName: "merchant_id"
+  #         AttributeType: "S"
+  #       - AttributeName: "order_id"
+  #         AttributeType: "S"
+  #     KeySchema:
+  #       - AttributeName: "merchant_id"
+  #         KeyType: "HASH"
+  #       - AttributeName: "order_id"
+  #         KeyType: "RANGE"
+  #     ProvisionedThroughput:
+  #       ReadCapacityUnits: 5
+  #       WriteCapacityUnits: 5
+
+  # Here's how you create simpe DynamoDB table
+  # DynamoDBMerchantsTable:
+  #   Type: "AWS::DynamoDB::Table"
+  #   Description: "Data store for AWS AppSync Merchants Type"
+  #   Properties:
+  #     TableName: !Sub ${Prefix}-merchants-table
+  #     AttributeDefinitions:
+  #       - AttributeName: "merchant_id"
+  #         AttributeType: "S"
+  #     KeySchema:
+  #       - AttributeName: "merchant_id"
+  #         KeyType: "HASH"
+  #     ProvisionedThroughput:
+  #       ReadCapacityUnits: 5
+  #       WriteCapacityUnits: 5
+
+
+  # Here's how you create a data source for each DynamoDB table
+  # AppSyncInvoicesTableDataSource:
+  #   Type: "AWS::AppSync::DataSource"
+  #   Properties:
+  #     ApiId: !GetAtt GraphQLApi.ApiId
+  #     Name: !Sub ${Prefix}_invoices_table
+  #     Description: "The Invoices Table AppSync Data Source"
+  #     Type: AMAZON_DYNAMODB
+  #     ServiceRoleArn: !GetAtt DynamoDBRole.Arn
+  #     DynamoDBConfig:
+  #       TableName: !Ref DynamoDBInvoicesTable
+  #       AwsRegion: !Sub ${AWS::Region}
+
+
+
+  # Example of lambda definition:
+  # LambdaEmailInvoiceFunction:
+  #   Type: AWS::Lambda::Function
+  #   Properties:
+  #     FunctionName: lambda-email-invoice
+  #     Description: Invoice Page Response Lambda
+  #     Handler: index.handler
+  #     Runtime: nodejs8.10
+  #     Code: ./lambda/email-invoice  #Code is overwritten by "sam package" command
+  #     MemorySize: 256
+  #     Timeout: 5
+  #     Role: !GetAtt LambdaCommonRole.Arn
+  #     Environment:
+  #       Variables:
+  #         REGION: !Ref AWS::Region
+  #         ACCOUNT_ID: !Ref AWS::AccountId
+  #         INVOICES_TABLE_NAME: !Ref DynamoDBInvoicesTable
+
+
+  # Here's how you create a data source for each lambda:
+  # LambdaEmailInvoiceDataSource:
+  #   Type: "AWS::AppSync::DataSource"
+  #   Properties:
+  #     Type: AWS_LAMBDA
+  #     #IAM role ARN which the data source will use to connect to a resource:
+  #     ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+  #     LambdaConfig:
+  #       LambdaFunctionArn: !GetAtt LambdaEmailInvoiceFunction.Arn
+  #     ApiId: !GetAtt GraphQLApi.ApiId
+  #     Name: !Sub "${Prefix}EmailInvoiceLambdaDataSource"
+
+  # Example of DynamoDB resolver that is using custom Cognito parameters and
+  # AppSyncMyInvoicesQueryResolver:
+  #   Type: "AWS::AppSync::Resolver"
+  #   DependsOn: Schema
+  #   Properties:
+  #     ApiId: !GetAtt GraphQLApi.ApiId
+  #     TypeName: Query
+  #     FieldName: myInvoices
+  #     DataSourceName: !GetAtt AppSyncInvoicesTableDataSource.Name
+  #     RequestMappingTemplate: |
+  #       {
+  #         "version": "2017-02-28",
+  #         "operation": "Query",
+  #         "query": {
+  #           "expression": "merchant_id = :merchant_id",
+  #           "expressionValues": {
+  #             ":merchant_id": $util.dynamodb.toDynamoDBJson($ctx.identity.claims.get("custom:merchant_id"))
+  #           }
+  #         }
+  #       },
+  #       "limit": $util.defaultIfNull(${ctx.args.limit}, 20),
+  #       "nextToken": $util.toJson(${ctx.args.nextToken})
+  #     ResponseMappingTemplate: "$util.toJson($ctx.result.items)"
+
+
+
+Outputs:
+  UserPoolId:
+    Value: !Ref UserPool
+    Description: User Pool Id
+  UserPoolClientId:
+    Value: !Ref UserPoolsClient
+    Description: User Pool ClientId
+  UserPoolClientName:
+    Value: default
+    Description: User Pool ClientName
+  IdentityPoolId:
+    Value: !Ref IdentityPool
+    Description: Identity Pool Id
