@@ -4,11 +4,10 @@
 1) Launch bootstrap.yaml CloudFormation template on your account:
 
 - Review and adjust bootstrap.yaml if necessary
-- Create personal access token on https://github.com/settings/tokens 
+- Create personal access token on https://github.com/settings/tokens
 - Replace [PROJECT_NAME] with lowercase project name
 - Fill in [GITHUB_USERNAME] [GITHUB_REPOSITORY_NAME] [GITHUB_TOKEN]
 - Run
-- Check CloudFormation to make sure it launched properly. CodePipeline will be created and run build and deploy iac.yaml template.
 
 ```
 aws cloudformation deploy \
@@ -16,14 +15,19 @@ aws cloudformation deploy \
   --stack-name [PROJECT_NAME]Bootstrap \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
-  Prefix=[PROJECT_NAME]_[ENVIRONMENT] \
+  Prefix=[PROJECT_NAME][ENVIRONMENT] \
   GithubOwner=[GITHUB_USERNAME]\
   GithubRepo=[GITHUB_REPOSITORY_NAME]\
   GithubBranch=master\
   GitHubToken=[GITHUB_TOKEN]
 ```
 
-2) Review 
+- Check CloudFormation to make sure it launched properly.
+- CodePipeline will be created and run build and deploy iac.yaml template.
+- Add GraphQL schema to schema.graphql
+- Review iac.yaml and create your data sources, resolvers, lambdas and other resources
+- Push to Git to redeploy!
+
 
 ### Creating your first user in Cognito user pool
 
@@ -41,23 +45,17 @@ aws cognito-idp admin-set-user-settings   \
   --mfa-options DeliveryMedium=SMS,AttributeName=phone_number
 ```
 
-### Resources
+### Included Resources
 
 - CI Pipeline (CodePipeline)
 - Build Service (CodeBuild)
 - User Pool (Cognito)
-- Identity Pool
 - User Pool client
+- Identity Pool
 - Authenticated and Unauthenticated user roles
 - S3 Bucket for lambda and CloudFormation uploads
-
-Once bootstrap stack it checks out the project code from repository, builds and uploads Lambda-resolver code and launces iac.yaml stack and creates:
-
-- AppSync API project
-- AppSync Schema
-- AppSync DataSource
-- AppSync Resolvers
-
+- AppSync API
+- IAM Roles and Policies
 
 ## TODO
 

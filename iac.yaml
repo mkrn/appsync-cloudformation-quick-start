@@ -291,7 +291,7 @@ Resources:
   LambdaCommonRole:
     Type: "AWS::IAM::Role"
     Properties:
-      RoleName: lambda-invoice-page-role
+      RoleName: !Sub "${Prefix}-lambda-common-role"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
