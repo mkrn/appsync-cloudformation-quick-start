@@ -12,9 +12,9 @@ phases:
     commands:
       # npm install lambda functions
       - npm config set strict-ssl false
-      # - cd lambda/email-invoice && npm install --production
-      # - cd database-migrations && npm install && npm run up
-      - sam package --template-file iac.yaml --output-template-file iac.yaml --s3-bucket cf-$(aws sts get-caller-identity --output text --query Account)
+      # npm install all functions in lambda/ sub-directory
+      - find ./lambda/* -maxdepth 2 -name package.json -execdir npm install --production \;
+      - sam package --template-file iac.yaml --output-template-file iac.yaml --s3-bucket cf-$PREFIX-$(aws sts get-caller-identity --output text --query Account)
 artifacts:
   files:
     - iac.yaml
