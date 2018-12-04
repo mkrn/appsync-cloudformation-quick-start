@@ -17,6 +17,7 @@ Parameters:
   GitHubToken:
     Type: String
     Description: Github Token
+    NoEcho: true
 
 
 Resources:
