@@ -68,7 +68,7 @@ Resources:
           Type: CODEPIPELINE
       Environment:
         ComputeType: BUILD_GENERAL1_LARGE
-        Image: aws/codebuild/nodejs:7.0.0
+        Image: aws/codebuild/nodejs:8.11.0
         Type: LINUX_CONTAINER
         EnvironmentVariables:
           - Name: PREFIX
